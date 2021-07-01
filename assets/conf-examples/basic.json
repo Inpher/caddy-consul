@@ -1,0 +1,11 @@
+{
+    "apps": {
+        "consul": {
+            "consul_global_config_key": "configs/caddy/caddystatic.json",
+            "consul_server": {
+                "address": "127.0.0.1:8500",
+                "scheme": "http"
+            }
+        }
+    }
+}
