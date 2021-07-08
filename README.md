@@ -17,7 +17,7 @@ it imports and offers a basic integration with the following plugins based on Co
 ## Table of Contents
 
 * [Overview](#overview)
-* [Loading Caddy's configuration from Consul](#loading-caddy-s-configuration-from-consul)
+* [Loading Caddy's configuration from Consul](#loading-caddys-configuration-from-consul)
 * [Keeping the configuration up-to-date](#keeping-the-configuration-up-to-date)
 * [Auto reverse-proxying](#auto-reverse-proxying)
 * [Support for third party plugins](#support-for-third-party-plugins)
@@ -86,8 +86,6 @@ The plugin will load this content and replace Caddy's running configuration with
 The new configuration doesn't contain the `consul` app, so Caddy will stop it.
 This is the equivalent of Caddy's built-in [HTTPLoader](https://caddyserver.com/docs/json/admin/config/load/http/),
 but for Consul.
-
-Note: the plugin only supports configuration via the JSON format for now.
 
 ## Keeping the configuration up-to-date
 
@@ -299,19 +297,17 @@ and [caddy-auth-jwt](https://github.com/greenpau/caddy-auth-jwt). It is enabled 
                     "x-token-user-email": "X-MYCOMPANY-USER"
                 },
                 "authentication_domain": "auth.my-awesome-domain.io",
-                "default_backend": "oauth2/google",
-                "auth_portal_configuration": {
+                "authp": {
                     "primary": true,
-                    "auth_url_path": "/auth",
-                    "cookies": {
+                    "cookie_config": {
                         "domain": "my-awesome-domain.io"
                     },
-                    "backends": [{
+                    "backend_configs": [{
                         "method": "oauth2",
                         "provider": "google",
                         "name": "google",
                         "realm": "google",
-                        "client_id": "[client_id.apps.googleusercontent.com]",
+                        "client_id": "[client_id].apps.googleusercontent.com",
                         "client_secret": "[client_secret]",
                         "scopes": ["email"]
                     },{
@@ -319,14 +315,17 @@ and [caddy-auth-jwt](https://github.com/greenpau/caddy-auth-jwt). It is enabled 
                         "provider": "github",
                         "name": "github",
                         "realm": "github",
-                        "client_id": "[client_id]]",
+                        "client_id": "[client_id]",
                         "client_secret": "[client_secret]",
                         "scopes": ["user"]
                     }],
-                    "jwt": {
+                    "crypto_key_configs": {
                         "token_name": "TokenName",
                         "token_secret": "testtesttesttesttesttesttest",
-                        "token_lifetime": 86400
+                        "token_lifetime": 86400,
+                        "usage": "auto",
+                        "algorithm": "hmac",
+                        "source": "config"
                     }
                 }
             }
@@ -341,7 +340,6 @@ This will enable the auth-portal on the domain `auth.my-awesome-domain.io/auth`,
 The configuration on top of the ones from the plugins are the following:
 - `enabled: true`: allows to enable or disable authentication
 - `authentication_domain`: the domain that hosts the authentication portal
-- `default_backend`: the default authentication backend a user is redirected to when he's not authenticated
 - `custom_claims_headers`: a mapping of [caddy-auth-jwt](https://github.com/greenpau/caddy-auth-jwt)'s claims headers
 to your own
 

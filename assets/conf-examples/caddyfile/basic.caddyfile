@@ -1,0 +1,9 @@
+{
+    consul {
+        consul_global_config_key "configs/caddy/caddyfile"
+        consul_server {
+            address "staging-consul.internal.inpher.io:8500"
+            scheme "http"
+        }
+    }
+}

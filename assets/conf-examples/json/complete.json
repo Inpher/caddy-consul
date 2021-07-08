@@ -50,14 +50,12 @@
                     "x-token-user-email": "X-MYCOMPANY-USER"
                 },
                 "authentication_domain": "auth.my-awesome-domain.io",
-                "default_backend": "oauth2/google",
-                "auth_portal_configuration": {
+                "authp": {
                     "primary": true,
-                    "auth_url_path": "/auth",
-                    "cookies": {
+                    "cookie_config": {
                         "domain": "my-awesome-domain.io"
                     },
-                    "backends": [{
+                    "backend_configs": [{
                         "method": "oauth2",
                         "provider": "google",
                         "name": "google",
@@ -74,10 +72,13 @@
                         "client_secret": "[client_secret]",
                         "scopes": ["user"]
                     }],
-                    "jwt": {
+                    "crypto_key_configs": {
                         "token_name": "TokenName",
                         "token_secret": "testtesttesttesttesttesttest",
-                        "token_lifetime": 86400
+                        "token_lifetime": 86400,
+                        "usage": "auto",
+                        "algorithm": "hmac",
+                        "source": "config"
                     }
                 }
             }

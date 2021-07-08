@@ -1,0 +1,66 @@
+{
+	debug
+  
+	admin 0.0.0.0:2019 {
+    }
+
+    consul {
+
+        consul_server {
+            address "staging-consul.internal.inpher.io:8500"
+            scheme "http"
+        }
+
+        consul_services_tag "caddy"
+        consul_global_config_key "configs/caddy/caddyfile"
+        
+        use_request_id "true"
+        
+        default_http_server_options {
+            zone "my-awesome-domain.io"
+            http_port 80
+            https_port 443
+        }
+
+        tls_issuers {
+            acme {
+                email sysadmin@example.com
+                resolvers 1.1.1.1
+                dns googleclouddns {
+                    gcp_project my-project-123456
+                }
+            }
+        }
+
+        authentication_configuration {
+
+            enabled "true"
+
+            authentication_domain "auth.my-awesome-domain.io"
+
+            custom_claims_headers {
+                x-token-user-email "X-MYCOMPANY-USER"
+            }
+
+            authp {
+                backends {
+                    google_oauth2_backend {
+                        method oauth2
+                        realm google
+                        provider google
+                        client_id "[client_id].apps.googleusercontent.com"
+                        client_secret "[client_secret]"
+                        scopes email
+                    }
+                }
+                cookie domain my-awesome-domain.io
+                crypto default token name TokenName
+                crypto default token lifetime 1800
+                crypto key auto testtesttesttesttesttesttest
+            }
+
+        }
+
+    }
+
+}
