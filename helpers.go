@@ -6,9 +6,17 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
 	"github.com/hashicorp/consul/api"
 )
+
+// getLastIndex is a function that takes an error as input and returns it after
+// logging it via caddy.Log().Error()
+func logAndReturn(err error) error {
+	caddy.Log().Error(err.Error())
+	return err
+}
 
 // getLastIndex is an easy accessor to handle getting a Consul index value
 // from a sync.Map.

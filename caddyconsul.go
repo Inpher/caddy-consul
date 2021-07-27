@@ -37,20 +37,15 @@ var (
 
 // App is the main Consul plugin struct
 type App struct {
-	// Whether or not to add X-Request-ID headers in requests
-	UseRequestID bool `json:"use_request_id"`
-	// Consul config K/V store key
+
+	// ConsulGlobalConfigKey is the Consul config K/V store key
 	ConsulGlobalConfigKey string `json:"consul_global_config_key"`
-	// The Consul service tag that triggers reverse-proxying of the service
-	ServicesTag string `json:"consul_services_tag" `
-	// Information to reach the Consul server
+
+	// Server describes the information to reach the Consul server
 	Server *ConsulServer `json:"consul_server"`
-	// Default HTTP(s) server options
-	DefaultHTTPServerOptions *DefaultHTTPServerOptions `json:"default_http_server_options"`
-	// The TLS issuers to use when generating the Caddy TLS app configuration
-	TLSIssuers []json.RawMessage `json:"tls_issuers" caddy:"namespace=tls.issuance inline_key=module"`
-	// The authentication configuration
-	AuthenticationConfiguration *AuthenticationConfiguration `json:"authentication_configuration"`
+
+	// AutoReverseProxy describes the auto reverse-proxying configuration from Consul services
+	AutoReverseProxy *AutoReverseProxyOptions `json:"auto_reverse_proxy"`
 
 	client         *api.Client
 	globalConfig   *caddy.Config
@@ -63,10 +58,20 @@ type App struct {
 func NewApp() (app *App) {
 
 	app = &App{
-		Server:                      &ConsulServer{},
-		DefaultHTTPServerOptions:    &DefaultHTTPServerOptions{},
-		TLSIssuers:                  []json.RawMessage{},
-		AuthenticationConfiguration: &AuthenticationConfiguration{},
+		Server: &ConsulServer{},
+		AutoReverseProxy: &AutoReverseProxyOptions{
+			DefaultHTTPServerOptions:    &DefaultHTTPServerOptions{},
+			TLSIssuers:                  []json.RawMessage{},
+			AuthenticationConfiguration: &AuthenticationConfiguration{
+				// AuthPortalConfiguration: authn.Authenticator{
+				// 	PrimaryInstance:        true,
+				// 	Context:                "default",
+				// 	UI:                     &ui.Parameters{},
+				// 	UserRegistrationConfig: &registration.Config{},
+				// 	TokenValidatorOptions:  &options.TokenValidatorOptions{},
+				// },
+			},
+		},
 	}
 
 	return
@@ -84,8 +89,6 @@ func (App) CaddyModule() caddy.ModuleInfo {
 func (cc *App) Provision(ctx caddy.Context) (err error) {
 
 	caddy.Log().Named("consul").Info("Provisioning app")
-
-	cc.shutdownChan = make(chan bool)
 
 	// Initialize Consul client
 	cc.client, err = api.NewClient(&api.Config{
@@ -111,6 +114,8 @@ func (cc *App) Provision(ctx caddy.Context) (err error) {
 		globalServices = make(map[string][]*api.ServiceEntry)
 	}
 
+	caddy.Log().Named("consul").Info("App is provisioned")
+
 	return nil
 }
 
@@ -118,6 +123,9 @@ func (cc *App) Provision(ctx caddy.Context) (err error) {
 func (cc *App) Start() error {
 
 	caddy.Log().Named("consul").Info("Starting app")
+
+	// We start listening for shutdown events
+	cc.shutdownChan = make(chan bool)
 
 	// We init our Consul watcher
 	go cc.watchConsul()
@@ -134,7 +142,9 @@ func (cc *App) Stop() error {
 func (cc *App) Cleanup() error {
 
 	caddy.Log().Named("consul").Info("Cleaning up app")
-	cc.shutdownChan <- true
+	if cc.shutdownChan != nil {
+		cc.shutdownChan <- true
+	}
 	caddy.Log().Named("consul").Info("App was cleaned!")
 
 	return nil
@@ -143,18 +153,52 @@ func (cc *App) Cleanup() error {
 // Validate validates that the module has a usable config.
 func (cc *App) Validate() error {
 
+	caddy.Log().Named("consul").Info("Validating app")
+
 	if cc.ConsulGlobalConfigKey == "" {
-		return ErrMissingConsulKVKey
-	}
-	if cc.ServicesTag == "" {
-		return ErrMissingConsulServiceTag
+		return logAndReturn(ErrMissingConsulKVKey)
 	}
 	if cc.Server.Address == "" {
-		return ErrConsulServerAddressMissing
+		return logAndReturn(ErrConsulServerAddressMissing)
 	}
 	if cc.Server.Scheme == "" {
-		return ErrConsulServerSchemeMissing
+		return logAndReturn(ErrConsulServerSchemeMissing)
 	}
+
+	// If ServicesTag is not empty, we will generate the http configuration,
+	// so we need to have some information
+	if cc.AutoReverseProxy.ServicesTag != "" {
+		if cc.AutoReverseProxy.DefaultHTTPServerOptions.HTTPPort == 0 {
+			return logAndReturn(ErrMissingDefaultHTTPServerOptionsHTTPPort)
+		}
+		if cc.AutoReverseProxy.DefaultHTTPServerOptions.HTTPSPort == 0 {
+			return logAndReturn(ErrMissingDefaultHTTPServerOptionsHTTPSPort)
+		}
+		if cc.AutoReverseProxy.DefaultHTTPServerOptions.Zone == "" {
+			return logAndReturn(ErrMissingDefaultHTTPServerOptionsZone)
+		}
+	}
+
+	// If module caddy-auth-portal is enabled, some options are required
+	if cc.AutoReverseProxy.AuthenticationConfiguration.Enabled {
+
+		// If we handle authentication, we need to have an authentication domain
+		if cc.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain == "" {
+			return logAndReturn(ErrMissingAuthenticationConfigurationAuthenticationDomain)
+		}
+
+		// If we handle authentication, we need to have some backend configs
+		if len(cc.AutoReverseProxy.AuthenticationConfiguration.AuthPortalConfiguration.BackendConfigs) == 0 {
+			return logAndReturn(ErrMissingAuthenticationConfigurationAuthPortalConfigurationBackendConfigs)
+		}
+
+		// If we handle authentication, we need to have a domain for the cookie
+		if cc.AutoReverseProxy.AuthenticationConfiguration.AuthPortalConfiguration.CookieConfig.Domain == "" {
+			return logAndReturn(ErrMissingAuthenticationConfigurationAuthPortalConfigurationCookieConfigDomain)
+		}
+	}
+
+	caddy.Log().Named("consul").Info("App validated")
 
 	return nil
 }

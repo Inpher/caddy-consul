@@ -307,7 +307,7 @@ func (cc *App) watchConsulKV(configChan chan *caddy.Config, shutdownKV chan bool
 // and triggers new go-routines watching the health of each returned service
 func (cc *App) watchConsulServices(servicesChan chan serviceEntries, shutdownServices chan bool, servicesInitWaitGroup *sync.WaitGroup, servicesWaitGroup *sync.WaitGroup) {
 
-	if cc.ServicesTag == "" {
+	if cc.AutoReverseProxy.ServicesTag == "" {
 		caddy.Log().Named("consul.watcher.services").Info("No services tag to watch, not watching services")
 		servicesInitWaitGroup.Done()
 		return
@@ -354,7 +354,7 @@ func (cc *App) watchConsulServices(servicesChan chan serviceEntries, shutdownSer
 		options := &api.QueryOptions{
 			WaitIndex: lastIndex,
 			WaitTime:  time.Minute * 5,
-			Filter:    fmt.Sprintf("%s in ServiceTags", cc.ServicesTag),
+			Filter:    fmt.Sprintf("%s in ServiceTags", cc.AutoReverseProxy.ServicesTag),
 		}
 
 		healthChecks, meta, err := cc.client.Health().State("passing", options.WithContext(healthCtx))
@@ -456,7 +456,7 @@ func (cc *App) watchConsulServiceHealthyEntries(ctx context.Context, serviceName
 				WaitTime:  time.Minute * 5,
 			}
 
-			consulServiceEntries, meta, err := cc.client.Health().Service(serviceName, cc.ServicesTag, true, queryOptions.WithContext(ctx))
+			consulServiceEntries, meta, err := cc.client.Health().Service(serviceName, cc.AutoReverseProxy.ServicesTag, true, queryOptions.WithContext(ctx))
 			if err != nil {
 
 				// If we canceled the context, nothing wrong here

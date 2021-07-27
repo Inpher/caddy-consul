@@ -137,27 +137,29 @@ Let's add a few things to our configuration:
                 "address": "127.0.0.1:8500",
                 "scheme": "http",
             },
-            "consul_services_tag": "caddy",
-            "default_http_server_options": {
-                "zone": "my-awesome-domain.io",
-                "http_port": 80,
-                "https_port": 443
-            },
-            "tls_issuers": [{
-                "module": "acme",
-                "email": "sysadmin@example.com",
-                "challenges": {
-                    "dns": {
-                        "ttl": 0,
-                        "propagation_timeout": 0,
-                        "resolvers": ["1.1.1.1"],
-                        "provider": {
-                            "name": "googleclouddns",
-                            "gcp_project": "my-project-123456"
+            "auto_reverse_proxy": {
+                "consul_services_tag": "caddy",
+                "default_http_server_options": {
+                    "zone": "my-awesome-domain.io",
+                    "http_port": 80,
+                    "https_port": 443
+                },
+                "tls_issuers": [{
+                    "module": "acme",
+                    "email": "sysadmin@example.com",
+                    "challenges": {
+                        "dns": {
+                            "ttl": 0,
+                            "propagation_timeout": 0,
+                            "resolvers": ["1.1.1.1"],
+                            "provider": {
+                                "name": "googleclouddns",
+                                "gcp_project": "my-project-123456"
+                            }
                         }
                     }
-                }                    
-            }]
+                }]
+            }
         }
     }
 }
@@ -273,7 +275,9 @@ This feature can be enabled like this:
 {
     "apps": {
         "consul": {
-            "use_request_id": true
+            "auto_reverse_proxy": {
+                "use_request_id": true
+            }
         }
     }
 }
@@ -291,41 +295,43 @@ and [caddy-auth-jwt](https://github.com/greenpau/caddy-auth-jwt). It is enabled 
 {
     "apps": {
         "consul": {
-            "authentication_configuration": {
-                "enabled": true,
-                "custom_claims_headers": {
-                    "x-token-user-email": "X-MYCOMPANY-USER"
-                },
-                "authentication_domain": "auth.my-awesome-domain.io",
-                "authp": {
-                    "primary": true,
-                    "cookie_config": {
-                        "domain": "my-awesome-domain.io"
+            "auto_reverse_proxy": {
+                "authentication_configuration": {
+                    "enabled": true,
+                    "custom_claims_headers": {
+                        "x-token-user-email": "X-MYCOMPANY-USER"
                     },
-                    "backend_configs": [{
-                        "method": "oauth2",
-                        "provider": "google",
-                        "name": "google",
-                        "realm": "google",
-                        "client_id": "[client_id].apps.googleusercontent.com",
-                        "client_secret": "[client_secret]",
-                        "scopes": ["email"]
-                    },{
-                        "method": "oauth2",
-                        "provider": "github",
-                        "name": "github",
-                        "realm": "github",
-                        "client_id": "[client_id]",
-                        "client_secret": "[client_secret]",
-                        "scopes": ["user"]
-                    }],
-                    "crypto_key_configs": {
-                        "token_name": "TokenName",
-                        "token_secret": "testtesttesttesttesttesttest",
-                        "token_lifetime": 86400,
-                        "usage": "auto",
-                        "algorithm": "hmac",
-                        "source": "config"
+                    "authentication_domain": "auth.my-awesome-domain.io",
+                    "authp": {
+                        "primary": true,
+                        "cookie_config": {
+                            "domain": "my-awesome-domain.io"
+                        },
+                        "backend_configs": [{
+                            "method": "oauth2",
+                            "provider": "google",
+                            "name": "google",
+                            "realm": "google",
+                            "client_id": "[client_id].apps.googleusercontent.com",
+                            "client_secret": "[client_secret]",
+                            "scopes": ["email"]
+                        },{
+                            "method": "oauth2",
+                            "provider": "github",
+                            "name": "github",
+                            "realm": "github",
+                            "client_id": "[client_id]",
+                            "client_secret": "[client_secret]",
+                            "scopes": ["user"]
+                        }],
+                        "crypto_key_configs": {
+                            "token_name": "TokenName",
+                            "token_secret": "testtesttesttesttesttesttest",
+                            "token_lifetime": 86400,
+                            "usage": "auto",
+                            "algorithm": "hmac",
+                            "source": "config"
+                        }
                     }
                 }
             }

@@ -1,0 +1,8 @@
+
+consul {
+    consul_global_config_key "configs/caddy/caddyfile"
+    consul_server {
+        address "127.0.0.1:8500"
+        scheme "http"
+    }
+}

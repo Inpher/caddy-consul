@@ -1,6 +1,8 @@
 package caddyconsul
 
 import (
+	"encoding/json"
+
 	caddyauthjwtauth "github.com/greenpau/caddy-auth-jwt/pkg/authz"
 	caddyauthportalauthn "github.com/greenpau/caddy-auth-portal/pkg/authn"
 	"github.com/hashicorp/consul/api"
@@ -34,6 +36,23 @@ type ConsulServer struct {
 
 	// Password to use for HTTP Basic Authentication.
 	Password string `json:"password"`
+}
+
+type AutoReverseProxyOptions struct {
+	// UseRequestID describes whether or not to add X-Request-ID headers in requests
+	UseRequestID bool `json:"use_request_id"`
+
+	// ServicesTag is the Consul service tag that triggers reverse-proxying of the service
+	ServicesTag string `json:"consul_services_tag" `
+
+	// DefaultHTTPServerOptions describes the default HTTP(s) server options
+	DefaultHTTPServerOptions *DefaultHTTPServerOptions `json:"default_http_server_options"`
+
+	// TLSIssuers describes the TLS issuers to use when generating the Caddy TLS app configuration
+	TLSIssuers []json.RawMessage `json:"tls_issuers" caddy:"namespace=tls.issuance inline_key=module"`
+
+	// AuthenticationConfiguration describes the authentication configuration
+	AuthenticationConfiguration *AuthenticationConfiguration `json:"authentication_configuration"`
 }
 
 // DefaultHTTPServerOptions describes the default HTTP(s) server options
@@ -167,14 +186,29 @@ const (
 	// ErrMissingConsulKVKey the Consul global config K/V is missing from the configuration
 	ErrMissingConsulKVKey StandardError = "consul_global_config_key is missing"
 
-	// ErrMissingConsulServiceTag the Consul service tag to fetch is missing from the configuration
-	ErrMissingConsulServiceTag StandardError = "consul_services_tag is missing"
-
 	// ErrConsulServerAddressMissing the Consul address is missing from the configuration
 	ErrConsulServerAddressMissing StandardError = "consul_server.address is missing"
 
 	// The Consul scheme is missing from the configuration
 	ErrConsulServerSchemeMissing StandardError = "consul_server.scheme is missing"
+
+	// ErrMissingDefaultHTTPServerOptionsHTTPPort the HTTP port is missing
+	ErrMissingDefaultHTTPServerOptionsHTTPPort StandardError = "auto_reverse_proxy.default_http_server_options.http_port is missing"
+
+	// ErrMissingDefaultHTTPServerOptionsHTTPSPort the HTTPS port is missing
+	ErrMissingDefaultHTTPServerOptionsHTTPSPort StandardError = "auto_reverse_proxy.default_http_server_options.https_port is missing"
+
+	// ErrMissingDefaultHTTPServerOptionsZone the default zone is missing
+	ErrMissingDefaultHTTPServerOptionsZone StandardError = "auto_reverse_proxy.default_http_server_options.zone is missing"
+
+	// ErrMissingAuthenticationConfigurationAuthenticationDomain the authentication domain is missing
+	ErrMissingAuthenticationConfigurationAuthenticationDomain StandardError = "authentication_configuration.authentication_domain"
+
+	// ErrMissingAuthenticationConfigurationAuthPortalConfigurationBackendConfigs empty authportal backends
+	ErrMissingAuthenticationConfigurationAuthPortalConfigurationBackendConfigs StandardError = "authentication_configuration.authp.backend_configs is empty"
+
+	// ErrMissingAuthenticationConfigurationAuthPortalConfigurationCookieConfigDomain authportal cookie domain is missing
+	ErrMissingAuthenticationConfigurationAuthPortalConfigurationCookieConfigDomain StandardError = "authentication_configuration.authp.cookie_config.domain is empty"
 )
 
 // ServiceEntries describes a Consul service for the internal computing

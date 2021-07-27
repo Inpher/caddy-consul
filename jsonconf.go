@@ -69,13 +69,13 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		Servers: map[string]*caddyhttp.Server{
 			"http": {
 				Listen: []string{
-					fmt.Sprintf(":%d", cc.DefaultHTTPServerOptions.HTTPPort),
+					fmt.Sprintf(":%d", cc.AutoReverseProxy.DefaultHTTPServerOptions.HTTPPort),
 				},
 				Routes: caddyhttp.RouteList{},
 			},
 			"https": {
 				Listen: []string{
-					fmt.Sprintf(":%d", cc.DefaultHTTPServerOptions.HTTPSPort),
+					fmt.Sprintf(":%d", cc.AutoReverseProxy.DefaultHTTPServerOptions.HTTPSPort),
 				},
 				Routes: caddyhttp.RouteList{cc.getAuthRoute()},
 			},
@@ -90,10 +90,10 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 	}
 
 	// If the authentication is enabled, we need to handle the certificates for the authentication domain too
-	if cc.AuthenticationConfiguration.Enabled {
+	if cc.AutoReverseProxy.AuthenticationConfiguration.Enabled {
 		tlsConf.Automation.Policies = append(tlsConf.Automation.Policies, &caddytls.AutomationPolicy{
-			Subjects:   []string{cc.AuthenticationConfiguration.AuthenticationDomain},
-			IssuersRaw: cc.TLSIssuers,
+			Subjects:   []string{cc.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain},
+			IssuersRaw: cc.AutoReverseProxy.TLSIssuers,
 		})
 	}
 
@@ -135,8 +135,8 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		}
 
 		// If authentication is enabled, let's remap the JWT claims
-		if cc.AuthenticationConfiguration.Enabled && options.Authentication {
-			for header, customHeader := range cc.AuthenticationConfiguration.CustomClaimsHeaders {
+		if cc.AutoReverseProxy.AuthenticationConfiguration.Enabled && options.Authentication {
+			for header, customHeader := range cc.AutoReverseProxy.AuthenticationConfiguration.CustomClaimsHeaders {
 				if _, ok := reverseProxyHandler.Headers.Request.Add[customHeader]; !ok {
 					reverseProxyHandler.Headers.Request.Add[customHeader] = []string{}
 				}
@@ -156,7 +156,7 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		}
 
 		// Do we want to use the request-id module?
-		if cc.UseRequestID {
+		if cc.AutoReverseProxy.UseRequestID {
 			reverseProxyHandler.Headers.Request.Add["X-REQUEST-ID"] = []string{"{http.request_id}"}
 			reverseProxyHandler.Headers.Response.Add["X-REQUEST-ID"] = []string{"{http.request_id}"}
 		}
@@ -176,7 +176,7 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 
 		// Let's define the host name for the service
 		name := instances[0].Service.Service
-		zone := cc.DefaultHTTPServerOptions.Zone
+		zone := cc.AutoReverseProxy.DefaultHTTPServerOptions.Zone
 		if options.ServiceNameOverride != "" {
 			name = options.ServiceNameOverride
 		}
@@ -190,7 +190,7 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		// Let's prepare the TLS app part for this website
 		tlsConf.Automation.Policies = append(tlsConf.Automation.Policies, &caddytls.AutomationPolicy{
 			Subjects:   hostnames,
-			IssuersRaw: cc.TLSIssuers,
+			IssuersRaw: cc.AutoReverseProxy.TLSIssuers,
 		})
 
 		// And now, let's build the handlers!
@@ -200,12 +200,12 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		if options.Authentication {
 			authURLPath := fmt.Sprintf(
 				"https://%s/auth",
-				cc.AuthenticationConfiguration.AuthenticationDomain,
+				cc.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain,
 			)
 			if options.AuthenticationProvider != "" {
 				authURLPath = fmt.Sprintf(
 					"https://%s/auth/%s",
-					cc.AuthenticationConfiguration.AuthenticationDomain,
+					cc.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain,
 					options.AuthenticationProvider,
 				)
 			}
@@ -213,7 +213,7 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		}
 
 		// If we generate (or propagate) the X-Request-ID header, we need to add the request_id handler
-		if cc.UseRequestID {
+		if cc.AutoReverseProxy.UseRequestID {
 			handlersRaw = append(handlersRaw, caddyconfig.JSONModuleObject(caddyrequestid.RequestID{}, "handler", "request_id", nil))
 		}
 
@@ -250,25 +250,25 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 // plugin.
 func (cc *App) getAuthRoute() (route caddyhttp.Route) {
 
-	if !cc.AuthenticationConfiguration.Enabled {
+	if !cc.AutoReverseProxy.AuthenticationConfiguration.Enabled {
 		return
 	}
 
 	authMiddleware := &portal.AuthMiddleware{
-		Portal: &cc.AuthenticationConfiguration.AuthPortalConfiguration,
+		Portal: &cc.AutoReverseProxy.AuthenticationConfiguration.AuthPortalConfiguration,
 	}
 	defaultAuthHandler := NewAuthenticationHandler(fmt.Sprintf(
 		"https://%s/auth",
-		cc.AuthenticationConfiguration.AuthenticationDomain,
+		cc.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain,
 	))
 	defaultAuthHandler.Providers.JWT.Authorizer = authz.Authorizer{
 		AuthURLPath: fmt.Sprintf(
 			"https://%s/auth",
-			cc.AuthenticationConfiguration.AuthenticationDomain,
+			cc.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain,
 		),
 		PrimaryInstance:       true,
 		PassClaimsWithHeaders: true,
-		CryptoKeyConfigs:      cc.AuthenticationConfiguration.AuthPortalConfiguration.CryptoKeyConfigs,
+		CryptoKeyConfigs:      cc.AutoReverseProxy.AuthenticationConfiguration.AuthPortalConfiguration.CryptoKeyConfigs,
 		AccessListRules: []*acl.RuleConfiguration{
 			{
 				Conditions: []string{"always match roles any"},
@@ -299,7 +299,7 @@ func (cc *App) getAuthRoute() (route caddyhttp.Route) {
 	route = caddyhttp.Route{
 		MatcherSetsRaw: caddyhttp.RawMatcherSets{
 			caddy.ModuleMap{
-				"host": caddyconfig.JSON([]string{cc.AuthenticationConfiguration.AuthenticationDomain}, nil),
+				"host": caddyconfig.JSON([]string{cc.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain}, nil),
 			},
 		},
 		HandlersRaw: []json.RawMessage{caddyconfig.JSONModuleObject(subRouteHandler, "handler", "subroute", nil)},
