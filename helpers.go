@@ -1,7 +1,6 @@
 package caddyconsul
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -12,14 +11,16 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
-func asJSON(obj interface{}) (sliceArray []byte) {
-	sliceArray, err := json.MarshalIndent(obj, "", "    ")
-	if err != nil {
-		caddy.Log().Error(fmt.Sprintf("Error while converting object to JSON: %s", err))
-	}
-	return
+// getLastIndex is a function that takes an error as input and returns it after
+// logging it via caddy.Log().Error()
+func logAndReturn(err error) error {
+	caddy.Log().Error(err.Error())
+	return err
 }
 
+// getLastIndex is an easy accessor to handle getting a Consul index value
+// from a sync.Map.
+// We know we only stored uint64 values, so we cast the returned value as uint64.
 func getLastIndex(key string) uint64 {
 	inferaceVal, ok := lastIndexes.Load(key)
 	if !ok {
@@ -28,11 +29,24 @@ func getLastIndex(key string) uint64 {
 	return inferaceVal.(uint64)
 }
 
+// storeLastIndex is an easy accessor to handle storing a Consul index value
+// in a sync.Map.
+// For even more ease, we return the value we just stored.
 func storeLastIndex(key string, value interface{}) uint64 {
 	lastIndexes.Store(key, value)
 	return value.(uint64)
 }
 
+// parseConsulService parses the entries returned by the Consul request to determine:
+// - the available upstreams
+// - the options specified as tags on the Consul service
+// All the options extracted from the Consul tags are parsed via the `reflect` package
+// and handled as tags on the struct.
+// Handled cases:
+// - a struct tag like this: caddy:"enable-auth" corresponds to a tag matching
+//   `caddy:enable-auth` in Consul
+// A struct tag like this: caddy:"name=(.*)" corresponds to a tag matching
+// `caddy:name=test` and will store "test" in the options returned
 func parseConsulService(entries []*api.ServiceEntry) (upstreams []*reverseproxy.Upstream, options *SubdomainReverseProxyOptions) {
 
 	options = &SubdomainReverseProxyOptions{}

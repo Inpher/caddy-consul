@@ -1,0 +1,47 @@
+consul {
+
+    consul_server {
+        address "127.0.0.1:8500"
+        scheme "http"
+    }
+
+    consul_global_config_key "configs/caddy/caddyfile"
+
+    auto_reverse_proxy {
+
+        use_request_id "true"
+        consul_services_tag "caddy"
+
+        default_http_server_options {
+            zone "my-awesome-domain.io"
+            http_port 80
+            https_port 443
+        }
+
+        tls_issuers {
+            acme {
+                email sysadmin@example.com
+                resolvers 1.1.1.1
+                alt_http_port 8080
+            }
+        }
+
+        authentication_configuration {
+
+            enabled "true"
+
+            authentication_domain "auth.my-awesome-domain.io"
+
+            custom_claims_headers {
+                x-token-user-email "X-MYCOMPANY-USER"
+            }
+
+            authp {
+                cookie domain my-awesome-domain.io
+            }
+
+        }
+
+    }
+
+}

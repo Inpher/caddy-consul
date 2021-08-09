@@ -17,7 +17,7 @@ it imports and offers a basic integration with the following plugins based on Co
 ## Table of Contents
 
 * [Overview](#overview)
-* [Loading Caddy's configuration from Consul](#loading-caddy-s-configuration-from-consul)
+* [Loading Caddy's configuration from Consul](#loading-caddys-configuration-from-consul)
 * [Keeping the configuration up-to-date](#keeping-the-configuration-up-to-date)
 * [Auto reverse-proxying](#auto-reverse-proxying)
 * [Support for third party plugins](#support-for-third-party-plugins)
@@ -87,8 +87,6 @@ The new configuration doesn't contain the `consul` app, so Caddy will stop it.
 This is the equivalent of Caddy's built-in [HTTPLoader](https://caddyserver.com/docs/json/admin/config/load/http/),
 but for Consul.
 
-Note: the plugin only supports configuration via the JSON format for now.
-
 ## Keeping the configuration up-to-date
 
 If we use the same example as before, but store this JSON in our Consul K/V entry:
@@ -139,27 +137,29 @@ Let's add a few things to our configuration:
                 "address": "127.0.0.1:8500",
                 "scheme": "http",
             },
-            "consul_services_tag": "caddy",
-            "default_http_server_options": {
-                "zone": "my-awesome-domain.io",
-                "http_port": 80,
-                "https_port": 443
-            },
-            "tls_issuers": [{
-                "module": "acme",
-                "email": "sysadmin@example.com",
-                "challenges": {
-                    "dns": {
-                        "ttl": 0,
-                        "propagation_timeout": 0,
-                        "resolvers": ["1.1.1.1"],
-                        "provider": {
-                            "name": "googleclouddns",
-                            "gcp_project": "my-project-123456"
+            "auto_reverse_proxy": {
+                "consul_services_tag": "caddy",
+                "default_http_server_options": {
+                    "zone": "my-awesome-domain.io",
+                    "http_port": 80,
+                    "https_port": 443
+                },
+                "tls_issuers": [{
+                    "module": "acme",
+                    "email": "sysadmin@example.com",
+                    "challenges": {
+                        "dns": {
+                            "ttl": 0,
+                            "propagation_timeout": 0,
+                            "resolvers": ["1.1.1.1"],
+                            "provider": {
+                                "name": "googleclouddns",
+                                "gcp_project": "my-project-123456"
+                            }
                         }
                     }
-                }                    
-            }]
+                }]
+            }
         }
     }
 }
@@ -275,7 +275,9 @@ This feature can be enabled like this:
 {
     "apps": {
         "consul": {
-            "use_request_id": true
+            "auto_reverse_proxy": {
+                "use_request_id": true
+            }
         }
     }
 }
@@ -293,40 +295,43 @@ and [caddy-auth-jwt](https://github.com/greenpau/caddy-auth-jwt). It is enabled 
 {
     "apps": {
         "consul": {
-            "authentication_configuration": {
-                "enabled": true,
-                "custom_claims_headers": {
-                    "x-token-user-email": "X-MYCOMPANY-USER"
-                },
-                "authentication_domain": "auth.my-awesome-domain.io",
-                "default_backend": "oauth2/google",
-                "auth_portal_configuration": {
-                    "primary": true,
-                    "auth_url_path": "/auth",
-                    "cookies": {
-                        "domain": "my-awesome-domain.io"
+            "auto_reverse_proxy": {
+                "authentication_configuration": {
+                    "enabled": true,
+                    "custom_claims_headers": {
+                        "x-token-user-email": "X-MYCOMPANY-USER"
                     },
-                    "backends": [{
-                        "method": "oauth2",
-                        "provider": "google",
-                        "name": "google",
-                        "realm": "google",
-                        "client_id": "[client_id.apps.googleusercontent.com]",
-                        "client_secret": "[client_secret]",
-                        "scopes": ["email"]
-                    },{
-                        "method": "oauth2",
-                        "provider": "github",
-                        "name": "github",
-                        "realm": "github",
-                        "client_id": "[client_id]]",
-                        "client_secret": "[client_secret]",
-                        "scopes": ["user"]
-                    }],
-                    "jwt": {
-                        "token_name": "TokenName",
-                        "token_secret": "testtesttesttesttesttesttest",
-                        "token_lifetime": 86400
+                    "authentication_domain": "auth.my-awesome-domain.io",
+                    "authp": {
+                        "primary": true,
+                        "cookie_config": {
+                            "domain": "my-awesome-domain.io"
+                        },
+                        "backend_configs": [{
+                            "method": "oauth2",
+                            "provider": "google",
+                            "name": "google",
+                            "realm": "google",
+                            "client_id": "[client_id].apps.googleusercontent.com",
+                            "client_secret": "[client_secret]",
+                            "scopes": ["email"]
+                        },{
+                            "method": "oauth2",
+                            "provider": "github",
+                            "name": "github",
+                            "realm": "github",
+                            "client_id": "[client_id]",
+                            "client_secret": "[client_secret]",
+                            "scopes": ["user"]
+                        }],
+                        "crypto_key_configs": {
+                            "token_name": "TokenName",
+                            "token_secret": "testtesttesttesttesttesttest",
+                            "token_lifetime": 86400,
+                            "usage": "auto",
+                            "algorithm": "hmac",
+                            "source": "config"
+                        }
                     }
                 }
             }
@@ -341,7 +346,6 @@ This will enable the auth-portal on the domain `auth.my-awesome-domain.io/auth`,
 The configuration on top of the ones from the plugins are the following:
 - `enabled: true`: allows to enable or disable authentication
 - `authentication_domain`: the domain that hosts the authentication portal
-- `default_backend`: the default authentication backend a user is redirected to when he's not authenticated
 - `custom_claims_headers`: a mapping of [caddy-auth-jwt](https://github.com/greenpau/caddy-auth-jwt)'s claims headers
 to your own
 

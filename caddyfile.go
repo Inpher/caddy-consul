@@ -3,269 +3,206 @@ package caddyconsul
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"strconv"
 
-	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/headers"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
-	"github.com/caddyserver/caddy/v2/modules/caddytls"
-	"github.com/greenpau/caddy-auth-jwt/pkg/auth"
-	"github.com/greenpau/caddy-auth-jwt/pkg/config"
+	"github.com/caddyserver/caddy/v2/caddyconfig"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 )
 
-func (cc *App) generateConfAsJSON() (confJson []byte, err error) {
+// getAppFromParseCaddyfile instantiates a new App{} struct from a Cadddyfile
+func getAppFromParseCaddyfile(d *caddyfile.Dispenser, existingVal interface{}) (interface{}, error) {
 
-	conf, err := cc.generateConf()
+	app, err := parseCaddyfile(d, existingVal)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	return asJSON(conf), nil
+	return httpcaddyfile.App{
+		Name:  "consul",
+		Value: caddyconfig.JSON(app, nil),
+	}, nil
 
 }
 
-func (cc *App) generateConf() (conf *caddy.Config, err error) {
+// parseCaddyfile configures the "consul" global option from Caddyfile.
+// Syntax:
+//		consul {
+//			consul_global_config_key <key>
+//			consul_services_tag <tag>
+//			use_request_id <bool>
+//			consul_server {
+//				...
+//			}
+//			default_http_server_options {
+//				...
+//			}
+//			authentication_configuration {
+//				...
+//			}
+//		}
+func parseCaddyfile(d *caddyfile.Dispenser, _ interface{}) (*App, error) {
 
-	if globalConfig == nil {
-		return conf, fmt.Errorf("globalConfig not initialized yet!")
+	app := NewApp()
+
+	// consume the option name
+	if !d.Next() {
+		return nil, d.ArgErr()
 	}
 
-	conf = &*globalConfig
+	for d.NextBlock(0) {
 
-	err = cc.generateHTTPAndTLSAppConfFromConsulServices(conf)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (err error) {
-
-	if len(globalServices) == 0 {
-		return
-	}
-
-	services := globalServices
-
-	if conf.AppsRaw == nil {
-		conf.AppsRaw = make(caddy.ModuleMap)
-	}
-
-	httpConf := &caddyhttp.App{
-		Servers: map[string]*caddyhttp.Server{
-			"http": {
-				Listen: []string{
-					fmt.Sprintf(":%d", cc.DefaultHTTPServerOptions.HTTPPort),
-				},
-				Routes: caddyhttp.RouteList{},
-			},
-			"https": {
-				Listen: []string{
-					fmt.Sprintf(":%d", cc.DefaultHTTPServerOptions.HTTPSPort),
-				},
-				Routes: caddyhttp.RouteList{cc.getAuthRoute()},
-			},
-		},
-	}
-
-	tlsConf := &caddytls.TLS{
-		Automation: &caddytls.AutomationConfig{
-			Policies: []*caddytls.AutomationPolicy{},
-		},
-	}
-
-	if cc.AuthenticationConfiguration.Enabled {
-		tlsConf.Automation.Policies = append(tlsConf.Automation.Policies, &caddytls.AutomationPolicy{
-			Subjects:   Hosts{cc.AuthenticationConfiguration.AuthenticationDomain},
-			IssuersRaw: cc.TLSIssuers,
-		})
-	}
-
-	for _, instances := range services {
-
-		// If no instance was returned, let's continue
-		if len(instances) == 0 {
-			continue
-		}
-
-		// We compute the upstreams and options requested from the service's instances
-		upstreams, options := parseConsulService(instances)
-
-		reverseProxyHandler := NewReverseProxyHandler()
-		reverseProxyHandler.Upstreams = upstreams
-		reverseProxyHandler.FlushInterval = caddy.Duration(options.FlushInterval)
-		reverseProxyHandler.BufferRequests = options.BufferRequests
-		reverseProxyHandler.BufferResponses = options.BufferResponses
-		reverseProxyHandler.MaxBufferSize = int64(options.MaxBufferSize)
-		reverseProxyHandler.Headers = &headers.Handler{
-			Request: &headers.HeaderOps{Add: http.Header{}},
-			Response: &headers.RespHeaderOps{
-				Deferred:  true,
-				HeaderOps: &headers.HeaderOps{Add: http.Header{}},
-			},
-		}
-
-		if options.UpstreamHeaders {
-			reverseProxyHandler.Headers.Response.Add = http.Header{
-				"X-PROXY-UPSTREAM-ADDRESS":  []string{"{http.reverse_proxy.upstream.address}"},
-				"X-PROXY-UPSTREAM-LATENCY":  []string{"{http.reverse_proxy.upstream.latency}"},
-				"X-PROXY-UPSTREAM-DURATION": []string{"{http.reverse_proxy.upstream.duration}"},
-				"X-PROXY-DURATION":          []string{"{http.reverse_proxy.duration}"},
-			}
-		}
-		if cc.AuthenticationConfiguration.Enabled && options.Authentication {
-			for header, customHeader := range cc.AuthenticationConfiguration.CustomClaimsHeaders {
-				if _, ok := reverseProxyHandler.Headers.Request.Add[customHeader]; !ok {
-					reverseProxyHandler.Headers.Request.Add[customHeader] = []string{}
+		switch d.Val() {
+		case "consul_server":
+			for nesting := d.Nesting(); d.NextBlock(nesting); {
+				switch d.Val() {
+				case "address":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.Address = d.Val()
+				case "scheme":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.Scheme = d.Val()
+				case "datacenter":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.Datacenter = d.Val()
+				case "namespace":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.Namespace = d.Val()
+				case "token":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.Token = d.Val()
+				case "token_file":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.TokenFile = d.Val()
+				case "username":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.Username = d.Val()
+				case "password":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.Server.Password = d.Val()
 				}
-				reverseProxyHandler.Headers.Request.Add[customHeader] = append(
-					reverseProxyHandler.Headers.Request.Add[customHeader],
-					fmt.Sprintf("{http.request.header.%s}", header),
-				)
+			}
+		case "consul_global_config_key":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			app.ConsulGlobalConfigKey = d.Val()
+		case "auto_reverse_proxy":
+			for nesting := d.Nesting(); d.NextBlock(nesting); {
+				switch d.Val() {
+				case "consul_services_tag":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.AutoReverseProxy.ServicesTag = d.Val()
+				case "use_request_id":
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.AutoReverseProxy.UseRequestID = d.Val() == "true"
 
-				if _, ok := reverseProxyHandler.Headers.Response.Add[customHeader]; !ok {
-					reverseProxyHandler.Headers.Response.Add[customHeader] = []string{}
+				case "default_http_server_options":
+					for nesting := d.Nesting(); d.NextBlock(nesting); {
+						switch d.Val() {
+						case "zone":
+							if !d.NextArg() {
+								return nil, d.ArgErr()
+							}
+							app.AutoReverseProxy.DefaultHTTPServerOptions.Zone = d.Val()
+						case "http_port":
+							if !d.NextArg() {
+								return nil, d.ArgErr()
+							}
+							val, err := strconv.Atoi(d.Val())
+							if err != nil {
+								return nil, err
+							}
+							app.AutoReverseProxy.DefaultHTTPServerOptions.HTTPPort = val
+						case "https_port":
+							if !d.NextArg() {
+								return nil, d.ArgErr()
+							}
+							val, err := strconv.Atoi(d.Val())
+							if err != nil {
+								return nil, err
+							}
+							app.AutoReverseProxy.DefaultHTTPServerOptions.HTTPSPort = val
+						}
+					}
+
+				case "tls_issuers":
+					for nesting := d.Nesting(); d.NextBlock(nesting); {
+
+						issuer := d.Val()
+						module := fmt.Sprintf("tls.issuance.%s", issuer)
+
+						unm, err := caddyfile.UnmarshalModule(d, module)
+						if err != nil {
+							return nil, err
+						}
+
+						app.AutoReverseProxy.TLSIssuers = append(app.AutoReverseProxy.TLSIssuers, caddyconfig.JSONModuleObject(unm, "module", issuer, nil))
+					}
+
+				case "authentication_configuration":
+					for nesting := d.Nesting(); d.NextBlock(nesting); {
+						switch d.Val() {
+						case "enabled":
+							if !d.NextArg() {
+								return nil, d.ArgErr()
+							}
+							app.AutoReverseProxy.AuthenticationConfiguration.Enabled = d.Val() == "true"
+						case "authentication_domain":
+							if !d.NextArg() {
+								return nil, d.ArgErr()
+							}
+							app.AutoReverseProxy.AuthenticationConfiguration.AuthenticationDomain = d.Val()
+						case "custom_claims_headers":
+							app.AutoReverseProxy.AuthenticationConfiguration.CustomClaimsHeaders = make(map[string]string)
+							for nesting := d.Nesting(); d.NextBlock(nesting); {
+								key := d.Val()
+								if !d.NextArg() {
+									return nil, d.ArgErr()
+								}
+								val := d.Val()
+								app.AutoReverseProxy.AuthenticationConfiguration.CustomClaimsHeaders[key] = val
+							}
+
+						case "authp":
+							unm, err := caddyfile.UnmarshalModule(d, "http.handlers.authp")
+							if err != nil {
+								return nil, err
+							}
+							jsonstr, err := json.Marshal(unm)
+							if err != nil {
+								return nil, err
+							}
+							err = json.Unmarshal(jsonstr, &app.AutoReverseProxy.AuthenticationConfiguration)
+							if err != nil {
+								return nil, err
+							}
+						}
+					}
 				}
-				reverseProxyHandler.Headers.Response.Add[customHeader] = append(
-					reverseProxyHandler.Headers.Response.Add[customHeader],
-					fmt.Sprintf("{http.request.header.%s}", header),
-				)
 			}
 		}
-		if cc.UseRequestID {
-			reverseProxyHandler.Headers.Request.Add["X-REQUEST-ID"] = []string{"{http.request_id}"}
-			reverseProxyHandler.Headers.Response.Add["X-REQUEST-ID"] = []string{"{http.request_id}"}
-		}
-		if options.LoadBalancingPolicy != "" {
-			reverseProxyHandler.LoadBalancing = &reverseproxy.LoadBalancing{
-				SelectionPolicyRaw: asJSON(ReverseProxyLoadBalancingSelection{Policy: options.LoadBalancingPolicy}),
-			}
-		}
-
-		// // We iterate over all instances of the service
-		// // to push the reverse_proxy upstreams
-		// for _, instance := range instances {
-		// 	reverseProxyHandler.Upstreams = append(reverseProxyHandler.Upstreams, &reverseproxy.Upstream{
-		// 		Dial: fmt.Sprintf("%s:%d", instance.Service.Address, instance.Service.Port),
-		// 	})
-		// }
-
-		name := instances[0].Service.Service
-		zone := cc.DefaultHTTPServerOptions.Zone
-		if options.ServiceNameOverride != "" {
-			name = options.ServiceNameOverride
-		}
-		if options.ZoneOverride != "" {
-			zone = options.ZoneOverride
-		}
-		hostnames := Hosts{fmt.Sprintf("%s.%s", name, zone)}
-
-		tlsConf.Automation.Policies = append(tlsConf.Automation.Policies, &caddytls.AutomationPolicy{
-			Subjects:   hostnames,
-			IssuersRaw: cc.TLSIssuers,
-		})
-
-		server := "https"
-		if options.NoHTTPS {
-			server = "http"
-		}
-
-		handlersRaw := []json.RawMessage{}
-		if options.Authentication {
-			authURLPath := fmt.Sprintf(
-				"https://%s%s/%s",
-				cc.AuthenticationConfiguration.AuthenticationDomain,
-				cc.AuthenticationConfiguration.AuthPortalConfiguration.AuthURLPath,
-				cc.AuthenticationConfiguration.DefaultBackend,
-			)
-			if options.AuthenticationProvider != "" {
-				authURLPath = fmt.Sprintf(
-					"https://%s%s/%s",
-					cc.AuthenticationConfiguration.AuthenticationDomain,
-					cc.AuthenticationConfiguration.AuthPortalConfiguration.AuthURLPath,
-					options.AuthenticationProvider,
-				)
-			}
-			handlersRaw = append(handlersRaw, asJSON(NewAuthenticationHandler(authURLPath)))
-		}
-		if cc.UseRequestID {
-			handlersRaw = append(handlersRaw, asJSON(NewRequestIDHandler()))
-		}
-		handlersRaw = append(handlersRaw, asJSON(reverseProxyHandler))
-
-		httpConf.Servers[server].Routes = append(httpConf.Servers[server].Routes,
-			caddyhttp.Route{
-				HandlersRaw: handlersRaw,
-				MatcherSetsRaw: caddyhttp.RawMatcherSets{
-					caddy.ModuleMap{
-						"host": asJSON(hostnames),
-					},
-				},
-				Terminal: true,
-			},
-		)
 	}
 
-	conf.AppsRaw["http"] = asJSON(httpConf)
-	conf.AppsRaw["tls"] = asJSON(tlsConf)
-
-	return
-}
-
-func (cc *App) getAuthRoute() (route caddyhttp.Route) {
-
-	if !cc.AuthenticationConfiguration.Enabled {
-		return
-	}
-
-	subRouteHandler := NewSubRouteHandler()
-	authPortalHandler := NewAuthPortalHandler()
-	defaultAuthHandler := NewAuthenticationHandler(fmt.Sprintf(
-		"https://%s%s/%s",
-		cc.AuthenticationConfiguration.AuthenticationDomain,
-		cc.AuthenticationConfiguration.AuthPortalConfiguration.AuthURLPath,
-		cc.AuthenticationConfiguration.DefaultBackend,
-	))
-	authPortalHandler.Portal = cc.AuthenticationConfiguration.AuthPortalConfiguration
-	defaultAuthHandler.Providers.JWT.Authorizer = auth.Authorizer{
-		AuthURLPath: fmt.Sprintf(
-			"https://%s%s/%s",
-			cc.AuthenticationConfiguration.AuthenticationDomain,
-			cc.AuthenticationConfiguration.AuthPortalConfiguration.AuthURLPath,
-			cc.AuthenticationConfiguration.DefaultBackend,
-		),
-		PrimaryInstance:       true,
-		PassClaimsWithHeaders: true,
-		TrustedTokens: []*config.CommonTokenConfig{
-			cc.AuthenticationConfiguration.AuthPortalConfiguration.TokenProvider,
-		},
-	}
-
-	subRouteHandler.Routes = caddyhttp.RouteList{
-		caddyhttp.Route{
-			Terminal: true,
-			MatcherSetsRaw: caddyhttp.RawMatcherSets{
-				caddy.ModuleMap{
-					"path_regexp": asJSON(caddyhttp.MatchPathRE{MatchRegexp: caddyhttp.MatchRegexp{Pattern: fmt.Sprintf("%s*", cc.AuthenticationConfiguration.AuthPortalConfiguration.AuthURLPath)}}),
-				},
-			},
-			HandlersRaw: []json.RawMessage{asJSON(authPortalHandler)},
-		},
-		caddyhttp.Route{
-			HandlersRaw: []json.RawMessage{asJSON(defaultAuthHandler)},
-		},
-	}
-
-	route = caddyhttp.Route{
-		MatcherSetsRaw: caddyhttp.RawMatcherSets{
-			caddy.ModuleMap{
-				"host": asJSON(Hosts{cc.AuthenticationConfiguration.AuthenticationDomain}),
-			},
-		},
-		HandlersRaw: []json.RawMessage{asJSON(subRouteHandler)},
-	}
-
-	return
+	return app, nil
 }

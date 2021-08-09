@@ -1,0 +1,89 @@
+{
+    "admin": {
+		"listen": "0.0.0.0:2019"
+    },
+    "logging": {
+        "logs": {
+            "default": {
+                "level": "DEBUG"
+            }
+        }
+    },
+    "apps": {
+        "consul": {
+            "consul_server": {
+                "address": "127.0.0.1:8500",
+                "scheme": "http",
+                "datacenter": "",
+                "namespace": "",
+                "token": "",
+                "token_file": "",
+                "username": "",
+                "password": ""
+            },
+            "consul_global_config_key": "configs/caddy/caddy.json",
+            "auto_reverse_proxy": {
+                "consul_services_tag": "caddy",
+                "use_request_id": true,
+                "default_http_server_options": {
+                    "zone": "my-awesome-domain.io",
+                    "http_port": 80,
+                    "https_port": 443
+                },
+                "tls_issuers": [{
+                    "module": "acme",
+                    "email": "sysadmin@example.com",
+                    "challenges": {
+                        "dns": {
+                            "ttl": 0,
+                            "propagation_timeout": 0,
+                            "resolvers": ["1.1.1.1"],
+                            "provider": {
+                                "name": "googleclouddns",
+                                "gcp_project": "my-project-123456"
+                            }
+                        }
+                    }
+                }],
+                "authentication_configuration": {
+                    "enabled": true,
+                    "custom_claims_headers": {
+                        "x-token-user-email": "X-MYCOMPANY-USER"
+                    },
+                    "authentication_domain": "auth.my-awesome-domain.io",
+                    "authp": {
+                        "primary": true,
+                        "cookie_config": {
+                            "domain": "my-awesome-domain.io"
+                        },
+                        "backend_configs": [{
+                            "method": "oauth2",
+                            "provider": "google",
+                            "name": "google",
+                            "realm": "google",
+                            "client_id": "[client_id].apps.googleusercontent.com",
+                            "client_secret": "[client_secret]",
+                            "scopes": ["email"]
+                        },{
+                            "method": "oauth2",
+                            "provider": "github",
+                            "name": "github",
+                            "realm": "github",
+                            "client_id": "[client_id]",
+                            "client_secret": "[client_secret]",
+                            "scopes": ["user"]
+                        }],
+                        "crypto_key_configs": {
+                            "token_name": "TokenName",
+                            "token_secret": "testtesttesttesttesttesttest",
+                            "token_lifetime": 86400,
+                            "usage": "auto",
+                            "algorithm": "hmac",
+                            "source": "config"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

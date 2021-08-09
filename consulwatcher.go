@@ -8,14 +8,18 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig"
 	"github.com/hashicorp/consul/api"
 )
 
+// watchConsul starts all the Consul requesting go-routines,
+// handles the initDone flag and handles the events triggered
+// by the requests to Consul
 func (cc *App) watchConsul() {
 
 	// Two chanels supporting the config and services transmissions
 	configChan := make(chan *caddy.Config)
-	servicesChan := make(chan ServiceEntries)
+	servicesChan := make(chan serviceEntries)
 
 	// A local channel used to notify and propagate that init is done
 	localInitDoneChan := make(chan bool)
@@ -33,7 +37,7 @@ func (cc *App) watchConsul() {
 	var confWaitGroup sync.WaitGroup
 	var servicesWaitGroup sync.WaitGroup
 
-	//
+	// Global lock mutex to avoid updating the config and services during the generation of the Caddy JSON config
 	var lock sync.Mutex
 
 	// We will at least wait for the first config
@@ -152,13 +156,18 @@ OUTERLOOP:
 		}
 	}
 
+	// We wait for the config go-routine
 	confWaitGroup.Wait()
+
+	// We wait for the services go-routines
 	servicesWaitGroup.Wait()
 
 	caddy.Log().Named("consul").Info("Exiting app!")
 
 }
 
+// waitForInitAndGenerateFirstConfig just waits for the init waitgroups to be done
+// and sends an event in the `initDone` channel
 func (cc *App) waitForInitAndGenerateFirstConfig(confWaitGroup *sync.WaitGroup, servicesWaitGroup *sync.WaitGroup, initDone chan bool) {
 
 	// We just wait for the two sync.WaitGroups to be done
@@ -168,6 +177,9 @@ func (cc *App) waitForInitAndGenerateFirstConfig(confWaitGroup *sync.WaitGroup, 
 	initDone <- true
 }
 
+// waitForShutdownEvent waits for an event received on the shutdown channel
+// and broadcasts it to the config watching go-routine and the services watching
+// go-routines
 func (cc *App) waitForShutdownEvent(shutdownKV chan bool, shutdownServices chan bool, stopChan chan bool) {
 
 OUTERLOOP:
@@ -188,11 +200,13 @@ OUTERLOOP:
 
 }
 
+// watchConsulKV watches the Consul K/V store key holding the Caddy configuration
+// this configuration is either in JSON or Caddyfile formats
 func (cc *App) watchConsulKV(configChan chan *caddy.Config, shutdownKV chan bool, confInitWaitGroup *sync.WaitGroup, confWaitGroup *sync.WaitGroup) {
 
 	stopped := false
 	signalInit := true
-	lastIndex := getLastIndex("consul-kv") //uint64(0)
+	lastIndex := getLastIndex("consul-kv")
 
 	KVCtx, cancelKVFunc := context.WithCancel(context.Background())
 
@@ -258,8 +272,25 @@ func (cc *App) watchConsulKV(configChan chan *caddy.Config, shutdownKV chan bool
 
 		err = json.Unmarshal(keypair.Value, &conf)
 		if err != nil {
-			caddy.Log().Named("consul.watcher.kv").Error("unable to unmarshal Consul KV content into caddy.Config struct")
-			continue
+			caddy.Log().Named("consul.watcher.kv").Debug("unable to unmarshal Consul KV content into caddy.Config struct, let's check if it's a caddyfile format")
+
+			cfgAdapter := caddyconfig.GetAdapter("caddyfile")
+			if cfgAdapter == nil {
+				caddy.Log().Named("consul.watcher.kv").Error("no Caddyfile adapter found")
+				continue
+			}
+
+			jsonVal, _, err := cfgAdapter.Adapt(keypair.Value, map[string]interface{}{})
+			if err != nil {
+				caddy.Log().Named("consul.watcher.kv").Error(fmt.Sprintf("error while adapting caddyfile to JSON: %s", err))
+				continue
+			}
+
+			err = json.Unmarshal(jsonVal, &conf)
+			if err != nil {
+				caddy.Log().Named("consul.watcher.kv").Error("unable to unmarshal Consul KV content into caddy.Config struct")
+				continue
+			}
 		}
 
 		configChan <- conf
@@ -272,9 +303,11 @@ func (cc *App) watchConsulKV(configChan chan *caddy.Config, shutdownKV chan bool
 
 }
 
-func (cc *App) watchConsulServices(servicesChan chan ServiceEntries, shutdownServices chan bool, servicesInitWaitGroup *sync.WaitGroup, servicesWaitGroup *sync.WaitGroup) {
+// watchConsulServices watches the global services that hold the tag that we look for
+// and triggers new go-routines watching the health of each returned service
+func (cc *App) watchConsulServices(servicesChan chan serviceEntries, shutdownServices chan bool, servicesInitWaitGroup *sync.WaitGroup, servicesWaitGroup *sync.WaitGroup) {
 
-	if cc.ServicesTag == "" {
+	if cc.AutoReverseProxy.ServicesTag == "" {
 		caddy.Log().Named("consul.watcher.services").Info("No services tag to watch, not watching services")
 		servicesInitWaitGroup.Done()
 		return
@@ -321,7 +354,7 @@ func (cc *App) watchConsulServices(servicesChan chan ServiceEntries, shutdownSer
 		options := &api.QueryOptions{
 			WaitIndex: lastIndex,
 			WaitTime:  time.Minute * 5,
-			Filter:    fmt.Sprintf("%s in ServiceTags", cc.ServicesTag),
+			Filter:    fmt.Sprintf("%s in ServiceTags", cc.AutoReverseProxy.ServicesTag),
 		}
 
 		healthChecks, meta, err := cc.client.Health().State("passing", options.WithContext(healthCtx))
@@ -393,7 +426,7 @@ func (cc *App) watchConsulServices(servicesChan chan ServiceEntries, shutdownSer
 				delete(currentServices, serviceName)
 
 				// We send the delete event to the main watcher for propagation
-				servicesChan <- ServiceEntries{
+				servicesChan <- serviceEntries{
 					EventType: "delete",
 					Service:   serviceName,
 				}
@@ -404,9 +437,10 @@ func (cc *App) watchConsulServices(servicesChan chan ServiceEntries, shutdownSer
 
 }
 
-func (cc *App) watchConsulServiceHealthyEntries(ctx context.Context, serviceName string, servicesChan chan ServiceEntries, servicesInitWaitGroup *sync.WaitGroup, signalInit bool) {
+// watchConsulServiceHealthyEntries watches the health of a specific service
+func (cc *App) watchConsulServiceHealthyEntries(ctx context.Context, serviceName string, servicesChan chan serviceEntries, servicesInitWaitGroup *sync.WaitGroup, signalInit bool) {
 
-	lastIndex := getLastIndex(fmt.Sprintf("consul-services-%s", serviceName)) //uint64(0)
+	lastIndex := getLastIndex(fmt.Sprintf("consul-services-%s", serviceName))
 
 	for {
 
@@ -422,7 +456,7 @@ func (cc *App) watchConsulServiceHealthyEntries(ctx context.Context, serviceName
 				WaitTime:  time.Minute * 5,
 			}
 
-			serviceEntries, meta, err := cc.client.Health().Service(serviceName, cc.ServicesTag, true, queryOptions.WithContext(ctx))
+			consulServiceEntries, meta, err := cc.client.Health().Service(serviceName, cc.AutoReverseProxy.ServicesTag, true, queryOptions.WithContext(ctx))
 			if err != nil {
 
 				// If we canceled the context, nothing wrong here
@@ -450,10 +484,10 @@ func (cc *App) watchConsulServiceHealthyEntries(ctx context.Context, serviceName
 
 			lastIndex = storeLastIndex(fmt.Sprintf("consul-services-%s", serviceName), meta.LastIndex)
 
-			servicesChan <- ServiceEntries{
+			servicesChan <- serviceEntries{
 				EventType: "update",
 				Service:   serviceName,
-				Entries:   serviceEntries,
+				Entries:   consulServiceEntries,
 			}
 
 			if signalInit {
