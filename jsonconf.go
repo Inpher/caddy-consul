@@ -169,9 +169,11 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		}
 
 		// Is our service HTTP only?
-		server := "https"
+		servers := []string{"https"}
 		if options.NoHTTPS {
-			server = "http"
+			servers = []string{"http"}
+		} else if options.NoAutoHTTPSRedirect {
+			servers = append(servers, "http")
 		}
 
 		// Let's define the host name for the service
@@ -221,17 +223,19 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		handlersRaw = append(handlersRaw, caddyconfig.JSONModuleObject(reverseProxyHandler, "handler", "reverse_proxy", nil))
 
 		// Now that we have everything, we add the route to our host on the relevant server (HTTP or HTTPS)
-		httpConf.Servers[server].Routes = append(httpConf.Servers[server].Routes,
-			caddyhttp.Route{
-				HandlersRaw: handlersRaw,
-				MatcherSetsRaw: caddyhttp.RawMatcherSets{
-					caddy.ModuleMap{
-						"host": caddyconfig.JSON(hostnames, nil),
+		for _, server := range servers {
+			httpConf.Servers[server].Routes = append(httpConf.Servers[server].Routes,
+				caddyhttp.Route{
+					HandlersRaw: handlersRaw,
+					MatcherSetsRaw: caddyhttp.RawMatcherSets{
+						caddy.ModuleMap{
+							"host": caddyconfig.JSON(hostnames, nil),
+						},
 					},
+					Terminal: true,
 				},
-				Terminal: true,
-			},
-		)
+			)
+		}
 
 	}
 
