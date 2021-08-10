@@ -100,6 +100,9 @@ type SubdomainReverseProxyOptions struct {
 	// Disables auto-https on the service (will only resolve in HTTP)
 	NoHTTPS bool `caddy:"no-https"`
 
+	// Disables auto-https redirect on the service (will resolve both in HTTP and HTTPS)
+	NoAutoHTTPSRedirect bool `caddy:"no-auto-https-redirect"`
+
 	// UpstreamHeaders defines whether or not to propagate the following upstream headers
 	// in the request's response:
 	// - X-PROXY-UPSTREAM-ADDRESS: address of the upstream server used
