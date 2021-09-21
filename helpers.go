@@ -57,11 +57,6 @@ func parseConsulService(entries []*api.ServiceEntry) (upstreams []*reverseproxy.
 
 	for _, entry := range entries {
 
-		// We add the instance as an upstream
-		upstreams = append(upstreams, &reverseproxy.Upstream{
-			Dial: fmt.Sprintf("%s:%d", entry.Service.Address, entry.Service.Port),
-		})
-
 		// We check the options on that instance
 		for i := 0; i < t.NumField(); i++ {
 
@@ -97,6 +92,17 @@ func parseConsulService(entries []*api.ServiceEntry) (upstreams []*reverseproxy.
 			}
 
 		}
+
+		scheme := "http"
+		if options.UpstreamScheme != "" {
+			scheme = options.UpstreamScheme
+		}
+
+		// We add the instance as an upstream
+		upstreams = append(upstreams, &reverseproxy.Upstream{
+			Dial: fmt.Sprintf("%s://%s:%d", scheme, entry.Service.Address, entry.Service.Port),
+		})
+
 	}
 
 	return
