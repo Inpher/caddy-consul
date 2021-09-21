@@ -131,7 +131,7 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 					InsecureSkipVerify: true,
 				},
 			}
-			reverseProxyHandler.TransportRaw = caddyconfig.JSON(transport, nil)
+			reverseProxyHandler.TransportRaw = caddyconfig.JSONModuleObject(transport, "protocol", "http", nil)
 		}
 
 		// Do we propagate upstream headers?
