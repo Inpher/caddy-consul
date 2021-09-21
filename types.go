@@ -104,7 +104,10 @@ type SubdomainReverseProxyOptions struct {
 	NoAutoHTTPSRedirect bool `caddy:"no-auto-https-redirect"`
 
 	// Disables auto-https on the service (will only resolve in HTTP)
-	UpstreamScheme string `caddy:"upstream-scheme=(.*)"`
+	UpstreamsScheme string `caddy:"upstreams-scheme=(.*)"`
+
+	// Insecure on HTTPS scheme
+	InsecureTLSUpstreams bool `caddy:"insecure-tls-upstreams"`
 
 	// UpstreamHeaders defines whether or not to propagate the following upstream headers
 	// in the request's response:

@@ -125,10 +125,10 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 		}
 
 		// If Upstream is HTTPS, then we use HTTPTransport and add the TLS tag (insecure)
-		if options.UpstreamScheme == "https" {
+		if options.UpstreamsScheme == "https" {
 			transport := reverseproxy.HTTPTransport{
 				TLS: &reverseproxy.TLSConfig{
-					InsecureSkipVerify: true,
+					InsecureSkipVerify: options.InsecureTLSUpstreams,
 				},
 			}
 			reverseProxyHandler.TransportRaw = caddyconfig.JSONModuleObject(transport, "protocol", "http", nil)

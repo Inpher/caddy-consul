@@ -249,7 +249,8 @@ This default behavior can be extended with more tags associated to the service:
 - `caddy:name=grafana-overridden`: uses name `grafana-overridden` instead of Consul's service name `grafana`
 - `caddy:no-https`: disables the automatic https feature (host will listen on HTTP port, no certificate generation)
 - `caddy:no-auto-https-redirect`: disables the automatic http -> https redirection (host will listen on both HTTP and HTTPS ports)
-- `caddy:upstream-scheme`: gets the scheme (http or https) of this specific upstream
+- `caddy:upstreams-scheme`: gets the scheme (http or https) of the upstreams (default is http)
+- `caddy:insecure-tls-upstreams`: sets --insecure tag on https upstreams to skip TLS certificate validation
 - `caddy:upstream-headers`: propagates Caddy's [upstream headers](https://caddyserver.com/docs/json/apps/http/servers/routes/handle/reverse_proxy/#docs)
 - `caddy:"buffer-requests"`: overrides Caddy's [buffer_requests](https://caddyserver.com/docs/json/apps/http/servers/routes/handle/reverse_proxy/buffer_requests/) value
 - `caddy:"buffer-responses"`: overrides Caddy's [buffer_responses](https://caddyserver.com/docs/json/apps/http/servers/routes/handle/reverse_proxy/buffer_requests/) value
