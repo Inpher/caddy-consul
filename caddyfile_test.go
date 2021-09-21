@@ -236,12 +236,9 @@ func TestValidate(t *testing.T) {
 
 			app, _ := parseCaddyfile(d, nil)
 
-			//fmt.Printf("APP: %+v\n", app.AutoReverseProxy.DefaultHTTPServerOptions)
-
 			err := app.Validate()
 			if tc.err == nil {
 				require.EqualError(t, err, tc.err.Error(), "meow?")
-				//require.NoError(t, err)
 			} else {
 				require.EqualError(t, err, tc.err.Error(), "wuaf")
 			}
