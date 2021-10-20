@@ -62,15 +62,7 @@ func NewApp() (app *App) {
 		AutoReverseProxy: &AutoReverseProxyOptions{
 			DefaultHTTPServerOptions:    &DefaultHTTPServerOptions{},
 			TLSIssuers:                  []json.RawMessage{},
-			AuthenticationConfiguration: &AuthenticationConfiguration{
-				// AuthPortalConfiguration: authn.Authenticator{
-				// 	PrimaryInstance:        true,
-				// 	Context:                "default",
-				// 	UI:                     &ui.Parameters{},
-				// 	UserRegistrationConfig: &registration.Config{},
-				// 	TokenValidatorOptions:  &options.TokenValidatorOptions{},
-				// },
-			},
+			AuthenticationConfiguration: &AuthenticationConfiguration{},
 		},
 	}
 

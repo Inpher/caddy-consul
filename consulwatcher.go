@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -141,7 +142,14 @@ OUTERLOOP:
 			// We just generated the conf, no need to do it again before the next update
 			needGeneration = false
 
-			caddy.Log().Named("consul").Debug(fmt.Sprintf("new configuration generated:\n%s\n", cc.fullConfigJSON))
+			// Sleeping a random time to reduce chances that all Caddy instances
+			// try to generate new SSL certificates at the same time
+			rand.Seed(time.Now().UnixNano())
+			n := rand.Intn(1500)
+
+			caddy.Log().Named("consul").Debug(fmt.Sprintf("sleeping %d ms before applying new configuration:\n%s\n", n, cc.fullConfigJSON))
+
+			time.Sleep(time.Duration(n) * time.Millisecond)
 
 			// We're not in the initial run anymore, so we have to propagate
 			// the new configuration to Caddy by ourselves
