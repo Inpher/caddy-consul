@@ -132,6 +132,11 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 				},
 			}
 			reverseProxyHandler.TransportRaw = caddyconfig.JSONModuleObject(transport, "protocol", "http", nil)
+		} else if options.UpstreamsScheme == "grpc" {
+			transport := reverseproxy.HTTPTransport{
+				Versions: []string{"h2c"},
+			}
+			reverseProxyHandler.TransportRaw = caddyconfig.JSONModuleObject(transport, "protocol", "http", nil)
 		}
 
 		// Do we propagate upstream headers?
