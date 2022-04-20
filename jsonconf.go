@@ -135,7 +135,7 @@ func (cc *App) generateHTTPAndTLSAppConfFromConsulServices(conf *caddy.Config) (
 			reverseProxyHandler.TransportRaw = caddyconfig.JSONModuleObject(transport, "protocol", "http", nil)
 		} else if options.UpstreamsScheme == "grpc" {
 			transport := reverseproxy.HTTPTransport{
-				Versions: []string{"h2c"},
+				Versions: []string{"h2c", "2"},
 			}
 			reverseProxyHandler.TransportRaw = caddyconfig.JSONModuleObject(transport, "protocol", "http", nil)
 		}
